@@ -1,0 +1,6 @@
+{
+  "name": "PulseMarket - Indian Market News & Analytics",
+  "description": "Live-ish NIFTY 50, BANK NIFTY, FIN NIFTY quotes, technical analysis indicators, derivatives option chain, news feed with AI sentiment analysis, and smart market assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

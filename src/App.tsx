@@ -53,8 +53,8 @@ export default function App() {
 
   const [userProfile, setUserProfile] = useState<UserProfile>({
     id: 'usr_849201',
-    name: 'Santhosh Mitukula',
-    email: 'mitukulasanthosh97@gmail.com',
+    name: 'Guest User',
+    email: 'guest@example.com',
     clientId: 'IN-NSE-984210',
     kycStatus: 'VERIFIED',
     accountType: 'PRO_TRADER',
@@ -68,43 +68,15 @@ export default function App() {
       totalPortfolio: 1875400,
       payinToday: 50000,
     },
-    apiKey: 'pm_live_894f29a01b_17192018',
-    apiSecret: 'sec_98410298a0c21b58',
+    apiKey: '',
+    apiSecret: '',
     riskLimits: {
       maxDailyLoss: 50000,
       maxOrderValue: 250000,
       defaultStopLossPct: 1.5,
       requireOrderConfirmation: true,
     },
-    loginHistory: [
-      {
-        id: 'log-1',
-        ipAddress: '103.211.54.18',
-        device: 'MacBook Pro M3 (macOS)',
-        browser: 'Chrome 124.0.0',
-        loginTime: new Date().toISOString(),
-        status: '2FA_VERIFIED',
-        location: 'Hyderabad, India',
-      },
-      {
-        id: 'log-2',
-        ipAddress: '103.211.54.18',
-        device: 'iPhone 15 Pro (iOS)',
-        browser: 'Mobile Safari 17.4',
-        loginTime: new Date(Date.now() - 86400000).toISOString(),
-        status: 'SUCCESS',
-        location: 'Hyderabad, India',
-      },
-      {
-        id: 'log-3',
-        ipAddress: '157.48.92.110',
-        device: 'Windows 11 Workstation',
-        browser: 'Chrome 123.0.0',
-        loginTime: new Date(Date.now() - 259200000).toISOString(),
-        status: 'SUCCESS',
-        location: 'Bengaluru, India',
-      },
-    ],
+    loginHistory: [],
   });
 
   // Load Market Data
@@ -166,6 +138,7 @@ export default function App() {
         userName={userProfile.name}
         userEmail={userProfile.email}
         onNavigateProfile={() => setActiveTab('profile')}
+        provenance={snapshot?.provenance ?? null}
       />
 
       {/* Tab Navigation */}

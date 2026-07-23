@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MarketStatus } from '../types';
+import { MarketStatus, SnapshotProvenance } from '../types';
 import {
   TrendingUp,
   Clock,
@@ -23,6 +23,7 @@ interface HeaderProps {
   userName?: string;
   userEmail?: string;
   onNavigateProfile?: () => void;
+  provenance?: SnapshotProvenance | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,25 +33,29 @@ export const Header: React.FC<HeaderProps> = ({
   theme,
   setTheme,
   onOpenDisclaimer,
-  userName = 'Santhosh Mitukula',
-  userEmail = 'mitukulasanthosh97@gmail.com',
+  userName = 'Guest',
+  userEmail = '',
+  provenance = null,
   onNavigateProfile,
 }) => {
-  const [secondsLeft, setSecondsLeft] = useState(300);
+  const computeSecondsLeft = () => {
+    const target = status?.nextUpdateAt ? new Date(status.nextUpdateAt).getTime() : null;
+    if (!target || Number.isNaN(target)) return 300;
+    return Math.max(0, Math.round((target - Date.now()) / 1000));
+  };
+
+  const [secondsLeft, setSecondsLeft] = useState(computeSecondsLeft);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSecondsLeft((prev) => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
+    const interval = setInterval(() => setSecondsLeft(computeSecondsLeft()), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [status?.nextUpdateAt]);
 
   useEffect(() => {
-    if (secondsLeft === 0) {
-      setSecondsLeft(300);
-      onRefresh();
-    }
-  }, [secondsLeft, onRefresh]);
+    if (secondsLeft > 0) return;
+    if (status?.status === 'CLOSED' || status?.status === 'HOLIDAY') return;
+    onRefresh();
+  }, [secondsLeft, status?.status, onRefresh]);
 
   const formatCountdown = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -98,11 +103,26 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          {/* Live Data Feed Source Badge */}
-          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-bold text-emerald-400">
-            <Radio className="w-3 h-3 animate-pulse text-emerald-400" />
-            <span>LIVE API FEED</span>
-          </div>
+          {/* Data provenance badge */}
+          {provenance ? (
+            provenance.anySimulated ? (
+              <div
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-[11px] font-bold text-amber-400"
+                title={
+                  `Quote: ${provenance.quote} · Technicals: ${provenance.technicals} · ` +
+                  `Options: ${provenance.derivatives} · Fundamentals: ${provenance.fundamentals}`
+                }
+              >
+                <ShieldAlert className="w-3 h-3" />
+                <span>PARTLY SIMULATED</span>
+              </div>
+            ) : (
+              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-bold text-emerald-400">
+                <Radio className="w-3 h-3 text-emerald-400" />
+                <span>DELAYED QUOTE FEED</span>
+              </div>
+            )
+          ) : null}
         </div>
 
         {/* 5-Min Cycle Countdown Ring & Controls */}

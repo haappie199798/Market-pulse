@@ -190,6 +190,14 @@ export function generateTechnicals(symbol: string, interval: '5m' | '15m' | '1h'
 
   return {
     interval,
+    dataQuality: {
+      source: 'SIMULATED',
+      candlesUsed: 0,
+      warmupComplete: false,
+      pivotsFrom: 'PREVIOUS_SESSION',
+      vwapAvailable: false,
+      computedAt: new Date().toISOString(),
+    },
     rsi14: 61.4,
     macd: {
       macd: 18.2,

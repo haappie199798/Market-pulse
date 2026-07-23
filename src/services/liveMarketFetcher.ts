@@ -1,12 +1,23 @@
 import { Quote, Candle, NewsArticle } from '../types';
 
+interface SymbolSpec {
+  upstream: string;
+  expectNameContains: string;
+}
+
+const SYMBOL_SPECS: Record<string, SymbolSpec> = {
+  NIFTY50: { upstream: '^NSEI', expectNameContains: 'nifty 50' },
+  BANKNIFTY: { upstream: '^NSEBANK', expectNameContains: 'bank' },
+  FINNIFTY: { upstream: 'NIFTY_FIN_SERVICE.NS', expectNameContains: 'fin' },
+  MIDCPNIFTY: { upstream: 'NIFTY_MID_SELECT.NS', expectNameContains: 'mid' },
+  SENSEX: { upstream: '^BSESN', expectNameContains: 'sensex' },
+  INDIAVIX: { upstream: '^INDIAVIX', expectNameContains: 'vix' },
+};
+
 const SYMBOL_MAP: Record<string, string> = {
-  NIFTY50: '^NSEI',
-  BANKNIFTY: '^NSEBANK',
-  FINNIFTY: '^NSEI',
-  MIDCPNIFTY: '^NSEMDCP50',
-  SENSEX: '^BSESN',
-  INDIAVIX: '^INDIAVIX',
+  ...Object.fromEntries(
+    Object.entries(SYMBOL_SPECS).map(([key, spec]) => [key, spec.upstream])
+  ),
   RELIANCE: 'RELIANCE.NS',
   HDFCBANK: 'HDFCBANK.NS',
   INFY: 'INFY.NS',
@@ -111,6 +122,20 @@ async function fetchYahooChartMeta(symbolKey: string): Promise<Quote | null> {
         ).toISOString(),
       };
 
+      const spec = SYMBOL_SPECS[symbolKey.toUpperCase()];
+      if (spec) {
+        const upstreamName = String(
+          meta.shortName || meta.longName || meta.symbol || ''
+        ).toLowerCase();
+        if (upstreamName && !upstreamName.includes(spec.expectNameContains)) {
+          console.error(
+            `[symbol-guard] ${symbolKey} resolved to "${upstreamName}" ` +
+              `which does not look like "${spec.expectNameContains}". Refusing the quote.`
+          );
+          return null;
+        }
+      }
+
       return quote;
     } catch (err) {
       console.error(`Host ${host} failed for ${symbolKey}:`, err);
@@ -153,12 +178,28 @@ export async function fetchMultipleLiveQuotes(
   return map;
 }
 
+const CHART_RANGE: Record<string, string> = {
+  '5m': '1d',
+  '15m': '5d',
+  '1h': '1mo',
+  '1d': '1y',
+};
+
+const WARMUP_RANGE: Record<string, string> = {
+  '5m': '1mo',
+  '15m': '3mo',
+  '1h': '1y',
+  '1d': '5y',
+};
+
 export async function fetchLiveCandles(
   symbol: string,
-  interval: string = '5m'
+  interval: string = '5m',
+  purpose: 'chart' | 'indicators' = 'chart'
 ): Promise<Candle[] | null> {
   const yahooSymbol = SYMBOL_MAP[symbol.toUpperCase()] || `${symbol.toUpperCase()}.NS`;
-  const range = interval === '1d' ? '1mo' : interval === '1h' ? '5d' : '1d';
+  const rangeTable = purpose === 'indicators' ? WARMUP_RANGE : CHART_RANGE;
+  const range = rangeTable[interval] || '1d';
   const yahooInterval = interval === '5m' ? '5m' : interval === '15m' ? '15m' : interval === '1h' ? '60m' : '1d';
 
   const hosts = [
@@ -234,89 +275,170 @@ export async function fetchLiveCandles(
   return null;
 }
 
+/* ------------------------------------------------------------------ */
+/* News                                                                */
+/* ------------------------------------------------------------------ */
+
+const ENTITY_TAGS: { tag: string; patterns: RegExp }[] = [
+  { tag: 'NIFTY50', patterns: /\bnifty\s?50\b|\bnifty\b(?!\s?(bank|next|midcap|it))/i },
+  { tag: 'BANKNIFTY', patterns: /\bbank\s?nifty\b|\bnifty\s?bank\b/i },
+  { tag: 'FINNIFTY', patterns: /\bfin\s?nifty\b|financial services index/i },
+  { tag: 'SENSEX', patterns: /\bsensex\b|\bbse\b/i },
+  { tag: 'BANKING', patterns: /\bbank(s|ing)?\b|hdfc bank|icici|axis bank|sbi\b|kotak/i },
+  { tag: 'IT', patterns: /\binfosys\b|\btcs\b|\bwipro\b|hcl tech|\bit stocks?\b/i },
+  { tag: 'AUTO', patterns: /maruti|tata motors|mahindra|bajaj auto|\bauto stocks?\b/i },
+  { tag: 'ENERGY', patterns: /reliance|ongc|\bcrude\b|\boil\b|adani/i },
+  { tag: 'PHARMA', patterns: /pharma|cipla|sun pharma|dr\.? reddy/i },
+  { tag: 'RBI', patterns: /\brbi\b|reserve bank|\bmpc\b|repo rate/i },
+  { tag: 'MACRO', patterns: /\bgdp\b|inflation|\bcpi\b|\bwpi\b|\biip\b|budget|fiscal/i },
+  { tag: 'FII', patterns: /\bfii\b|\bdii\b|foreign investors?|institutional/i },
+  { tag: 'GLOBAL', patterns: /\bfed\b|wall street|nasdaq|dow jones|us markets/i },
+  { tag: 'DERIVATIVES', patterns: /option|expiry|futures|open interest|\boi\b|\bpcr\b/i },
+];
+
+const POSITIVE_TERMS = [
+  'surge', 'surges', 'rally', 'rallies', 'gain', 'gains', 'jump', 'jumps',
+  'record high', 'all-time high', 'rebound', 'recover', 'recovers', 'upgrade',
+  'beats estimate', 'outperform', 'inflow', 'inflows', 'bullish', 'soar', 'soars',
+];
+
+const NEGATIVE_TERMS = [
+  'plunge', 'plunges', 'crash', 'crashes', 'slump', 'slumps', 'tumble', 'tumbles',
+  'slide', 'slides', 'downgrade', 'misses estimate', 'outflow', 'outflows',
+  'bearish', 'sell-off', 'selloff', 'profit booking', 'sinks', 'drags', 'weighs on',
+];
+
+const NEGATORS = /\b(cuts?|pares?|trims?|erases?|recovers? from|off)\s+(losses|lows)\b/i;
+
+function scoreSentiment(text: string): {
+  sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  score: number;
+} {
+  const lower = text.toLowerCase();
+
+  if (NEGATORS.test(lower)) return { sentiment: 'POSITIVE', score: 0.4 };
+
+  let score = 0;
+  for (const term of POSITIVE_TERMS) if (lower.includes(term)) score += 1;
+  for (const term of NEGATIVE_TERMS) if (lower.includes(term)) score -= 1;
+
+  if (score === 0) return { sentiment: 'NEUTRAL', score: 0 };
+
+  const normalised = Math.max(-1, Math.min(1, score / 3));
+  return {
+    sentiment: normalised > 0 ? 'POSITIVE' : 'NEGATIVE',
+    score: Number(normalised.toFixed(2)),
+  };
+}
+
+function tagHeadline(text: string): string[] {
+  const tags = ENTITY_TAGS.filter((e) => e.patterns.test(text)).map((e) => e.tag);
+  return tags.length ? tags : ['MARKETS'];
+}
+
+function categorise(
+  text: string
+): 'MARKETS' | 'ECONOMY' | 'RESULTS' | 'POLICY' | 'GLOBAL' | 'CORPORATE' {
+  const lower = text.toLowerCase();
+  if (/\brbi\b|repo rate|monetary policy|\bmpc\b/.test(lower)) return 'POLICY';
+  if (/\bq[1-4]\b|results|earnings|profit rose|revenue/.test(lower)) return 'RESULTS';
+  if (/\bgdp\b|inflation|\bcpi\b|\bwpi\b|\biip\b|budget/.test(lower)) return 'ECONOMY';
+  if (/\bfed\b|wall street|nasdaq|dow jones|global markets/.test(lower)) return 'GLOBAL';
+  return 'MARKETS';
+}
+
+function dedupeKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 8)
+    .join(' ');
+}
+
+function decodeXmlText(raw: string): string {
+  return raw
+    .replace(/<!\[CDATA\[/g, '')
+    .replace(/\]\]>/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
 export async function fetchLiveNewsRSS(): Promise<NewsArticle[] | null> {
   try {
     const url =
       'https://news.google.com/rss/search?q=Indian+Stock+Market+Nifty+Sensex+NSE&hl=en-IN&gl=IN&ceid=IN:en';
     const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': randomUA,
-      },
-    });
+    const res = await fetch(url, { headers: { 'User-Agent': randomUA } });
 
     if (!res.ok) return null;
 
     const xml = await res.text();
-    const itemRegex = /<item>[\s\S]*?<\/item>/g;
-    const items = xml.match(itemRegex) || [];
+    const items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
 
     const newsList: NewsArticle[] = [];
+    const seen = new Set<string>();
 
-    items.slice(0, 10).forEach((itemXml, index) => {
+    items.slice(0, 25).forEach((itemXml, index) => {
       const titleMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/);
+      if (!titleMatch) return;
+
+      const title = decodeXmlText(titleMatch[1]);
+      if (!title) return;
+
+      const key = dedupeKey(title);
+      if (seen.has(key)) return;
+      seen.add(key);
+
       const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
       const linkMatch = itemXml.match(/<link>([\s\S]*?)<\/link>/);
       const sourceMatch = itemXml.match(/<source[\s\S]*?>([\s\S]*?)<\/source>/);
+      const descMatch = itemXml.match(/<description>([\s\S]*?)<\/description>/);
 
-      if (titleMatch) {
-        let title = titleMatch[1]
-          .replace(/<!\[CDATA\[/g, '')
-          .replace(/\]\]>/g, '')
-          .trim();
-        const source = sourceMatch ? sourceMatch[1].trim() : 'Market News';
-        const link = linkMatch ? linkMatch[1].trim() : 'https://news.google.com';
-        const pubDate = pubDateMatch ? pubDateMatch[1] : new Date().toISOString();
+      const source = sourceMatch ? decodeXmlText(sourceMatch[1]) : 'Market News';
+      const link = linkMatch ? linkMatch[1].trim() : 'https://news.google.com';
 
-        const lower = title.toLowerCase();
-        let sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' = 'NEUTRAL';
-        let sentimentScore = 0;
-        if (
-          lower.includes('surge') ||
-          lower.includes('rally') ||
-          lower.includes('gain') ||
-          lower.includes('jump') ||
-          lower.includes('record high') ||
-          lower.includes('bull') ||
-          lower.includes('profit up')
-        ) {
-          sentiment = 'POSITIVE';
-          sentimentScore = 0.75;
-        } else if (
-          lower.includes('drop') ||
-          lower.includes('fall') ||
-          lower.includes('slide') ||
-          lower.includes('plunge') ||
-          lower.includes('crash') ||
-          lower.includes('bear') ||
-          lower.includes('loss')
-        ) {
-          sentiment = 'NEGATIVE';
-          sentimentScore = -0.75;
-        }
+      const parsedDate = pubDateMatch ? new Date(pubDateMatch[1]) : new Date();
+      const publishedAt = Number.isNaN(parsedDate.getTime())
+        ? new Date().toISOString()
+        : parsedDate.toISOString();
 
-        const category = lower.includes('policy')
-          ? 'POLICY'
-          : lower.includes('result') || lower.includes('q1') || lower.includes('q2') || lower.includes('q3') || lower.includes('q4')
-          ? 'RESULTS'
-          : lower.includes('rbi') || lower.includes('gdp') || lower.includes('inflation')
-          ? 'ECONOMY'
-          : 'MARKETS';
+      const rawDesc = descMatch ? decodeXmlText(descMatch[1]) : '';
+      const snippet =
+        rawDesc && rawDesc.toLowerCase() !== title.toLowerCase()
+          ? rawDesc.slice(0, 200)
+          : `Published by ${source}.`;
 
-        newsList.push({
-          id: `live-news-${index}-${Date.now()}`,
-          title,
-          snippet: `${title}. Reported by ${source}.`,
-          source,
-          url: link,
-          publishedAt: new Date(pubDate).toISOString(),
-          sentiment,
-          sentimentScore,
-          impactScore: sentiment === 'NEUTRAL' ? 0.5 : 0.85,
-          tags: ['LIVE', 'NSE', 'NIFTY'],
-          category,
-        });
-      }
+      const { sentiment, score } = scoreSentiment(title);
+      const tags = tagHeadline(title);
+
+      const ageHours = (Date.now() - new Date(publishedAt).getTime()) / 3_600_000;
+      const recency = Math.max(0, 1 - ageHours / 24);
+      const impactScore = Number(
+        Math.min(1, 0.3 * recency + 0.2 * Math.min(tags.length / 3, 1) + Math.abs(score) * 0.3).toFixed(2)
+      );
+
+      newsList.push({
+        id: `live-news-${key.replace(/ /g, '-')}-${index}`,
+        title,
+        snippet,
+        source,
+        url: link,
+        publishedAt,
+        sentiment,
+        sentimentScore: score,
+        impactScore,
+        tags,
+        category: categorise(title),
+      });
     });
 
     return newsList.length > 0 ? newsList : null;

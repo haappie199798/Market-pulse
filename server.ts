@@ -23,12 +23,28 @@ import {
   fetchLiveNewsRSS
 } from './src/services/liveMarketFetcher.js';
 
+import { tickBroadcaster } from './src/services/tickBroadcaster';
+import { computeRealTechnicals } from './src/services/technicals';
+import { SnapshotProvenance } from './src/types';
+
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+const STALE_AFTER_MS = 5 * 60 * 1000 + 30 * 1000;
+
+function buildMeta(asOf: Date, extra: Record<string, unknown> = {}) {
+  const age = Date.now() - asOf.getTime();
+  return {
+    asOf: asOf.toISOString(),
+    ageSeconds: Math.round(age / 1000),
+    stale: age > STALE_AFTER_MS,
+    ...extra,
+  };
+}
 
 // Server-side Gemini initialization
 let aiClient: GoogleGenAI | null = null;
@@ -81,38 +97,43 @@ app.get('/api/indices', async (req, res) => {
 app.get('/api/indices/:symbol', async (req, res) => {
   const symbol = (req.params.symbol || 'NIFTY50').toUpperCase();
   const snapshot = getFullSnapshot(symbol);
-  try {
-    const liveQuote = await fetchLiveQuote(symbol);
-    if (liveQuote) {
-      snapshot.quote = liveQuote;
-    }
-    res.json({
-      data: snapshot,
-      meta: {
-        asOf: new Date().toISOString(),
-        stale: false,
-        delayedMinutes: 0,
-        isLive: !!liveQuote
-      }
-    });
-  } catch (e) {
-    res.json({
-      data: snapshot,
-      meta: {
-        asOf: new Date().toISOString(),
-        stale: false,
-        delayedMinutes: 0,
-        isLive: false
-      }
-    });
-  }
+  const asOf = new Date();
+
+  const [liveQuote] = await Promise.all([
+    fetchLiveQuote(symbol).catch(() => null),
+  ]);
+
+  if (liveQuote) snapshot.quote = liveQuote;
+
+  const provenance: SnapshotProvenance = {
+    quote: liveQuote ? 'LIVE' : 'SIMULATED',
+    technicals: snapshot.technicals.dataQuality?.source || 'SIMULATED',
+    derivatives: 'SIMULATED',
+    fundamentals: 'SIMULATED',
+    constituents: 'SIMULATED',
+    asOf: asOf.toISOString(),
+    anySimulated: true,
+  };
+  provenance.anySimulated =
+    provenance.quote === 'SIMULATED' ||
+    provenance.technicals === 'SIMULATED' ||
+    provenance.derivatives === 'SIMULATED' ||
+    provenance.fundamentals === 'SIMULATED' ||
+    provenance.constituents === 'SIMULATED';
+
+  snapshot.provenance = provenance;
+
+  res.json({
+    data: snapshot,
+    meta: buildMeta(asOf, { isLive: !!liveQuote, provenance }),
+  });
 });
 
 app.get('/api/indices/:symbol/ohlcv', async (req, res) => {
   const symbol = (req.params.symbol || 'NIFTY50').toUpperCase();
   const interval = (req.query.interval as '5m' | '15m' | '1h' | '1d') || '5m';
   try {
-    const liveCandles = await fetchLiveCandles(symbol, interval);
+    const liveCandles = await fetchLiveCandles(symbol, interval, 'chart');
     if (liveCandles && liveCandles.length >= 5) {
       res.json({ data: liveCandles, meta: { isLive: true } });
       return;
@@ -124,17 +145,43 @@ app.get('/api/indices/:symbol/ohlcv', async (req, res) => {
   res.json({ data: candles, meta: { isLive: false } });
 });
 
-app.get('/api/indices/:symbol/technicals', (req, res) => {
+app.get('/api/indices/:symbol/technicals', async (req, res) => {
   const symbol = (req.params.symbol || 'NIFTY50').toUpperCase();
   const interval = (req.query.interval as '5m' | '15m' | '1h' | '1d') || '5m';
-  const technicals = generateTechnicals(symbol, interval);
-  res.json({ data: technicals });
+
+  try {
+    let quote = await fetchLiveQuote(symbol);
+    if (!quote) {
+      quote = generateQuote(symbol);
+    }
+
+    let candles = await fetchLiveCandles(symbol, interval, 'indicators');
+    if (!candles || candles.length < 5) {
+      candles = generateCandles(symbol, interval, 60);
+    }
+
+    const realTechnicals = computeRealTechnicals(candles, quote, interval);
+    res.json({
+      data: realTechnicals,
+      meta: buildMeta(new Date(), {
+        computed: realTechnicals.dataQuality?.source === 'COMPUTED',
+        warmupComplete: realTechnicals.dataQuality?.warmupComplete ?? false,
+      }),
+    });
+  } catch (err) {
+    console.error('Error calculating technicals:', err);
+    const fallback = generateTechnicals(symbol, interval);
+    res.json({ data: fallback });
+  }
 });
 
 app.get('/api/indices/:symbol/option-chain', (req, res) => {
   const symbol = (req.params.symbol || 'NIFTY50').toUpperCase();
   const chain = generateOptionChain(symbol);
-  res.json({ data: chain });
+  res.json({
+    data: chain,
+    meta: buildMeta(new Date(), { simulated: true, reason: 'NO_OPTION_CHAIN_PROVIDER' }),
+  });
 });
 
 app.get('/api/news', async (req, res) => {
@@ -144,8 +191,6 @@ app.get('/api/news', async (req, res) => {
   let news = await fetchLiveNewsRSS();
   if (!news || news.length === 0) {
     news = [...SAMPLE_NEWS];
-  } else {
-    news = [...news, ...SAMPLE_NEWS];
   }
 
   if (category !== 'ALL') {
@@ -158,92 +203,61 @@ app.get('/api/news', async (req, res) => {
 });
 
 app.get('/api/flows/fii-dii', (req, res) => {
-  res.json({ data: SAMPLE_FII_DII });
+  res.json({
+    data: SAMPLE_FII_DII,
+    meta: buildMeta(new Date(), { simulated: true, reason: 'NO_FLOWS_PROVIDER' }),
+  });
 });
 
 app.get('/api/calendar/events', (req, res) => {
   res.json({ data: SAMPLE_CALENDAR });
 });
 
-// SSE Real-time Live Market Ticks Stream
-app.get('/api/stream/ticks', async (req, res) => {
+// SSE Real-time Live Market Ticks Stream using shared fan-out broadcaster
+app.get('/api/stream/ticks', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  const symbols = ['NIFTY50', 'BANKNIFTY', 'FINNIFTY', 'SENSEX', 'RELIANCE', 'HDFCBANK'];
-  
-  let basePrices: Record<string, number> = {
-    NIFTY50: 24812.35,
-    BANKNIFTY: 52410.80,
-    FINNIFTY: 23680.15,
-    SENSEX: 81342.10,
-    RELIANCE: 2942.10,
-    HDFCBANK: 1684.50,
-  };
+  res.write(
+    `event: meta\ndata: ${JSON.stringify({
+      source: 'UPSTREAM_QUOTE_POLL',
+      isExchangeTickFeed: false,
+      pollIntervalMs: 5000,
+      note: 'Values are polled quote observations, not trade prints. No order book data is available.',
+    })}\n\n`
+  );
 
-  let lastLiveFetchAt = 0;
+  for (const [symbol, quote] of Object.entries(tickBroadcaster.getSnapshot())) {
+    res.write(
+      `data: ${JSON.stringify({
+        id: `seed-${symbol}`,
+        symbol,
+        ltp: quote.ltp,
+        changeAbs: quote.changeAbs,
+        changePct: quote.changePct,
+        direction: 'SAME',
+        timestamp: quote.updatedAt,
+        source: 'POLL',
+      })}\n\n`
+    );
+  }
 
-  const updateLivePrices = async () => {
-    try {
-      const liveMap = await fetchMultipleLiveQuotes(symbols);
-      symbols.forEach((sym) => {
-        if (liveMap[sym]?.ltp) {
-          basePrices[sym] = liveMap[sym].ltp;
-        }
-      });
-      lastLiveFetchAt = Date.now();
-    } catch (e) {
-      // Keep existing base prices
-    }
-  };
-
-  await updateLivePrices();
-  const currentPrices: Record<string, number> = { ...basePrices };
-
-  // Periodically update live prices every 10 seconds from market API
-  const liveSyncInterval = setInterval(() => {
-    updateLivePrices();
-  }, 10000);
-
-  const interval = setInterval(() => {
-    const sym = symbols[Math.floor(Math.random() * symbols.length)];
-    const cur = currentPrices[sym] || basePrices[sym] || 1000;
-    
-    // Smooth micro step relative to real-time live price
-    const step = (Math.random() - 0.48) * (cur * 0.0004);
-    const newLtp = Number((cur + step).toFixed(2));
-    currentPrices[sym] = newLtp;
-
-    const base = basePrices[sym] || newLtp;
-    const changeAbs = Number((newLtp - base).toFixed(2));
-    const changePct = Number(((changeAbs / base) * 100).toFixed(2));
-    const direction = step > 0 ? 'UP' : step < 0 ? 'DOWN' : 'SAME';
-    const quantity = Math.floor(Math.random() * 450) + 25;
-    const spread = Number((newLtp * 0.00015).toFixed(2));
-
-    const tick = {
-      id: `tick-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      symbol: sym,
-      ltp: newLtp,
-      changeAbs,
-      changePct,
-      quantity,
-      bidPrice: Number((newLtp - spread).toFixed(2)),
-      askPrice: Number((newLtp + spread).toFixed(2)),
-      direction,
-      timestamp: new Date().toISOString(),
-      isLiveSynced: lastLiveFetchAt > 0,
-    };
-
+  const unsubscribe = tickBroadcaster.subscribe((tick) => {
     res.write(`data: ${JSON.stringify(tick)}\n\n`);
-  }, 1000);
+  });
+
+  const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), 25000);
 
   req.on('close', () => {
-    clearInterval(interval);
-    clearInterval(liveSyncInterval);
+    unsubscribe();
+    clearInterval(heartbeat);
   });
+});
+
+app.get('/api/stream/status', (req, res) => {
+  res.json({ data: tickBroadcaster.getStatus() });
 });
 
 // Gemini AI Market Assistant Endpoint
@@ -281,7 +295,8 @@ Live Data Context for ${contextSymbol}:
 Instructions:
 1. Provide a concise, highly readable, structured response using markdown headers and bullet points.
 2. Interpret technicals and options data mathematically and objectively.
-3. NEVER give buy, sell, or target price advice. Include a brief non-advisory SEBI compliant note at the bottom.`;
+3. NEVER give buy, sell, or target price advice. Include a brief non-advisory SEBI compliant note at the bottom.
+4. Option chain figures (PCR, max pain, OI strikes) in this context are PLACEHOLDER values, not live exchange data. If the user's question depends on them, say so plainly rather than interpreting them as real.`;
 
     const response = await gemini.models.generateContent({
       model: 'gemini-3.6-flash',

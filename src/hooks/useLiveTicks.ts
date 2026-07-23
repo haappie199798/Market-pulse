@@ -10,14 +10,7 @@ export function useLiveTicks() {
     direction: 'UP' | 'DOWN' | 'SAME';
     flash: 'UP' | 'DOWN' | null;
     timestamp: string;
-  }>>({
-    NIFTY50: { ltp: 24812.35, changeAbs: 118.5, changePct: 0.48, direction: 'UP', flash: null, timestamp: new Date().toISOString() },
-    BANKNIFTY: { ltp: 52410.80, changeAbs: 442.2, changePct: 0.85, direction: 'UP', flash: null, timestamp: new Date().toISOString() },
-    FINNIFTY: { ltp: 23680.15, changeAbs: 95.4, changePct: 0.40, direction: 'UP', flash: null, timestamp: new Date().toISOString() },
-    SENSEX: { ltp: 81342.10, changeAbs: -120.3, changePct: -0.15, direction: 'DOWN', flash: null, timestamp: new Date().toISOString() },
-    RELIANCE: { ltp: 2942.10, changeAbs: -21.0, changePct: -0.71, direction: 'DOWN', flash: null, timestamp: new Date().toISOString() },
-    HDFCBANK: { ltp: 1684.50, changeAbs: 23.6, changePct: 1.42, direction: 'UP', flash: null, timestamp: new Date().toISOString() },
-  });
+  }>>({});
 
   const [isConnected, setIsConnected] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -90,32 +83,6 @@ export function useLiveTicks() {
       es.onerror = () => {
         setIsConnected(false);
         if (es) es.close();
-
-        // Fallback simulated local ticker if SSE connection drops
-        if (!fallbackInterval) {
-          fallbackInterval = setInterval(() => {
-            const symbols = ['NIFTY50', 'BANKNIFTY', 'FINNIFTY', 'SENSEX', 'RELIANCE', 'HDFCBANK'];
-            const sym = symbols[Math.floor(Math.random() * symbols.length)];
-            const curLtp = latestPricesRef.current[sym]?.ltp || 1000;
-            const delta = (Math.random() - 0.48) * (curLtp * 0.0005);
-            const newLtp = Number((curLtp + delta).toFixed(2));
-            const direction = delta > 0 ? 'UP' : 'DOWN';
-
-            const simulatedTick: LiveTick = {
-              id: `sim-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              symbol: sym,
-              ltp: newLtp,
-              changeAbs: Number((delta).toFixed(2)),
-              changePct: Number(((delta / curLtp) * 100).toFixed(2)),
-              quantity: Math.floor(Math.random() * 300) + 10,
-              bidPrice: Number((newLtp - 0.2).toFixed(2)),
-              askPrice: Number((newLtp + 0.2).toFixed(2)),
-              direction,
-              timestamp: new Date().toISOString()
-            };
-            processTick(simulatedTick);
-          }, 1200);
-        }
       };
     } catch {
       setIsConnected(false);
@@ -123,7 +90,6 @@ export function useLiveTicks() {
 
     return () => {
       if (es) es.close();
-      if (fallbackInterval) clearInterval(fallbackInterval);
     };
   }, [isPaused]);
 

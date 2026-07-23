@@ -72,47 +72,56 @@ export interface TechnicalsSummary {
   confidence: number;
 }
 
+export interface TechnicalsDataQuality {
+  source: 'COMPUTED' | 'SIMULATED';
+  candlesUsed: number;
+  warmupComplete: boolean;
+  pivotsFrom: string;
+  vwapAvailable: boolean;
+  computedAt: string;
+}
+
 export interface TechnicalsPayload {
   interval: '5m' | '15m' | '1h' | '1d';
-  rsi14: number;
+  rsi14: number | null;
   macd: {
-    macd: number;
-    signal: number;
-    hist: number;
+    macd: number | null;
+    signal: number | null;
+    hist: number | null;
     cross: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
   };
   ema: {
-    ema9: number;
-    ema20: number;
-    ema50: number;
-    ema100: number;
-    ema200: number;
+    ema9: number | null;
+    ema20: number | null;
+    ema50: number | null;
+    ema100: number | null;
+    ema200: number | null;
   };
   sma: {
-    sma20: number;
-    sma50: number;
-    sma200: number;
+    sma20: number | null;
+    sma50: number | null;
+    sma200: number | null;
   };
   supertrend: {
-    value: number;
-    direction: 'UP' | 'DOWN';
+    value: number | null;
+    direction: 'UP' | 'DOWN' | null;
     flippedThisCandle: boolean;
   };
   bollinger: {
-    upper: number;
-    mid: number;
-    lower: number;
-    percentB: number;
-    bandwidth: number;
+    upper: number | null;
+    mid: number | null;
+    lower: number | null;
+    percentB: number | null;
+    bandwidth: number | null;
   };
-  adx14: number;
-  atr14: number;
-  vwap: number;
+  adx14: number | null;
+  atr14: number | null;
+  vwap: number | null;
   stochastic: {
-    k: number;
-    d: number;
+    k: number | null;
+    d: number | null;
   };
-  cci20: number;
+  cci20: number | null;
   pivots: {
     type: 'classic' | 'fibonacci' | 'camarilla';
     pp: number;
@@ -131,6 +140,7 @@ export interface TechnicalsPayload {
   };
   patterns: string[];
   summary: TechnicalsSummary;
+  dataQuality: TechnicalsDataQuality;
 }
 
 export type BuildupType = 'LONG_BUILDUP' | 'SHORT_BUILDUP' | 'LONG_UNWINDING' | 'SHORT_COVERING';
@@ -250,11 +260,19 @@ export interface LiveTick {
   ltp: number;
   changeAbs: number;
   changePct: number;
-  quantity: number;
-  bidPrice: number;
-  askPrice: number;
   direction: 'UP' | 'DOWN' | 'SAME';
   timestamp: string;
+  source: 'POLL' | 'SIMULATED';
+}
+
+export interface SnapshotProvenance {
+  quote: 'LIVE' | 'SIMULATED';
+  technicals: 'COMPUTED' | 'SIMULATED';
+  derivatives: 'LIVE' | 'SIMULATED';
+  fundamentals: 'LIVE' | 'SIMULATED';
+  constituents: 'LIVE' | 'SIMULATED';
+  asOf: string;
+  anySimulated: boolean;
 }
 
 export interface FullIndexSnapshot {
@@ -265,6 +283,7 @@ export interface FullIndexSnapshot {
   derivatives: OptionChainSnapshot;
   fundamentals: IndexFundamentals;
   disclaimerKey: string;
+  provenance?: SnapshotProvenance;
 }
 
 export interface UserSessionLog {

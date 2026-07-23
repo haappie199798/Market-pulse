@@ -34,28 +34,8 @@ export const LiveFeedStream: React.FC = () => {
     (t) => selectedSymbolFilter === 'ALL' || t.symbol === selectedSymbolFilter
   );
 
-  // Simulated live market depth for selectedDepthSymbol
-  const depthLtp = latestPrices[selectedDepthSymbol]?.ltp || 24800;
-  const spread = Number((depthLtp * 0.00015).toFixed(2));
-  
-  const bids = [
-    { price: Number((depthLtp - spread * 1).toFixed(2)), qty: 1250, orders: 14 },
-    { price: Number((depthLtp - spread * 2).toFixed(2)), qty: 2100, orders: 28 },
-    { price: Number((depthLtp - spread * 3).toFixed(2)), qty: 3400, orders: 42 },
-    { price: Number((depthLtp - spread * 4).toFixed(2)), qty: 1800, orders: 19 },
-    { price: Number((depthLtp - spread * 5).toFixed(2)), qty: 4200, orders: 55 },
-  ];
-
-  const asks = [
-    { price: Number((depthLtp + spread * 1).toFixed(2)), qty: 1100, orders: 12 },
-    { price: Number((depthLtp + spread * 2).toFixed(2)), qty: 1950, orders: 22 },
-    { price: Number((depthLtp + spread * 3).toFixed(2)), qty: 2800, orders: 35 },
-    { price: Number((depthLtp + spread * 4).toFixed(2)), qty: 3100, orders: 38 },
-    { price: Number((depthLtp + spread * 5).toFixed(2)), qty: 5000, orders: 61 },
-  ];
-
-  const maxBidQty = Math.max(...bids.map(b => b.qty));
-  const maxAskQty = Math.max(...asks.map(a => a.qty));
+  // There is no order-book feed behind this app.
+  const depthLtp = latestPrices[selectedDepthSymbol]?.ltp ?? null;
 
   return (
     <div className="space-y-6 pb-12">
@@ -151,15 +131,15 @@ export const LiveFeedStream: React.FC = () => {
       {/* TWO-COLUMN LAYOUT: LIVE ORDER DEPTH & TRADE TICK STREAM LOG */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* COLUMN 1: LIVE MARKET DEPTH (LEVEL 2 ORDER BOOK) */}
+        {/* COLUMN 1: ORDER DEPTH STATUS */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Layers className="w-4 h-4 text-emerald-400" />
-                Live Order Depth (Level 2)
+                <Layers className="w-4 h-4 text-slate-500" />
+                Level-2 Order Depth
               </h3>
-              <p className="text-[11px] text-slate-400">Bid/Ask order book for {selectedDepthSymbol}</p>
+              <p className="text-[11px] text-slate-400">Bid/Ask order book status</p>
             </div>
             
             <select
@@ -176,56 +156,17 @@ export const LiveFeedStream: React.FC = () => {
           <div className="text-center py-2 bg-slate-950/80 rounded-2xl border border-slate-800">
             <span className="text-[10px] text-slate-500 block uppercase">LAST TRADED PRICE</span>
             <span className="text-xl font-black font-mono text-emerald-400">
-              ₹{depthLtp.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              {depthLtp == null
+                ? '—'
+                : `₹${depthLtp.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
             </span>
           </div>
 
-          {/* BID & ASK TABLES */}
-          <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-            
-            {/* BIDS (BUYERS) */}
-            <div className="space-y-1.5">
-              <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider pb-1 border-b border-slate-800 flex justify-between">
-                <span>BID (BUY)</span>
-                <span>QTY</span>
-              </div>
-              {bids.map((b, idx) => {
-                const widthPct = Math.min(100, Math.round((b.qty / maxBidQty) * 100));
-                return (
-                  <div key={idx} className="relative overflow-hidden rounded px-1.5 py-1 bg-slate-950/60 flex justify-between items-center text-[11px]">
-                    <div
-                      className="absolute left-0 top-0 bottom-0 bg-emerald-500/15 transition-all duration-300 pointer-events-none"
-                      style={{ width: `${widthPct}%` }}
-                    />
-                    <span className="font-bold text-emerald-400 relative z-10">₹{b.price}</span>
-                    <span className="text-slate-300 relative z-10">{b.qty}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ASKS (SELLERS) */}
-            <div className="space-y-1.5">
-              <div className="text-[10px] font-bold text-rose-400 uppercase tracking-wider pb-1 border-b border-slate-800 flex justify-between">
-                <span>ASK (SELL)</span>
-                <span>QTY</span>
-              </div>
-              {asks.map((a, idx) => {
-                const widthPct = Math.min(100, Math.round((a.qty / maxAskQty) * 100));
-                return (
-                  <div key={idx} className="relative overflow-hidden rounded px-1.5 py-1 bg-slate-950/60 flex justify-between items-center text-[11px]">
-                    <div
-                      className="absolute right-0 top-0 bottom-0 bg-rose-500/15 transition-all duration-300 pointer-events-none"
-                      style={{ width: `${widthPct}%` }}
-                    />
-                    <span className="font-bold text-rose-400 relative z-10">₹{a.price}</span>
-                    <span className="text-slate-300 relative z-10">{a.qty}</span>
-                  </div>
-                );
-              })}
-
-            </div>
-
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-center text-slate-400 text-xs space-y-1">
+            <p className="font-bold text-slate-300">Order Depth Not Available</p>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Level-2 bid/ask depth requires a paid tick websocket feed from a registered broker or exchange vendor. It is not available from public quote endpoints.
+            </p>
           </div>
         </div>
 
@@ -238,7 +179,7 @@ export const LiveFeedStream: React.FC = () => {
                 <Activity className="w-4 h-4 text-sky-400" />
                 Live Trade Stream Matrix ({filteredTicks.length} Ticks)
               </h3>
-              <p className="text-[11px] text-slate-400">Incoming executions pushed live via Server-Sent Events</p>
+              <p className="text-[11px] text-slate-400">Incoming updates pushed live via Server-Sent Events</p>
             </div>
 
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
@@ -267,19 +208,18 @@ export const LiveFeedStream: React.FC = () => {
                   <th className="py-2.5 px-3">Symbol</th>
                   <th className="py-2.5 px-3 text-right">LTP</th>
                   <th className="py-2.5 px-3 text-right">Change</th>
-                  <th className="py-2.5 px-3 text-right">Qty</th>
-                  <th className="py-2.5 px-3 text-right">Bid / Ask</th>
+                  <th className="py-2.5 px-3 text-right">Source</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/40">
                 {filteredTicks.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-slate-500 text-xs">
+                    <td colSpan={5} className="text-center py-12 text-slate-500 text-xs">
                       Waiting for live tick broadcast...
                     </td>
                   </tr>
                 ) : (
-                  filteredTicks.map((t) => {
+                  filteredTicks.map((t, idx) => {
                     const isUp = t.direction === 'UP';
                     const timeStr = new Date(t.timestamp).toLocaleTimeString([], {
                       hour: '2-digit',
@@ -289,7 +229,7 @@ export const LiveFeedStream: React.FC = () => {
 
                     return (
                       <tr
-                        key={t.id}
+                        key={t.id ? `${t.id}-${idx}` : `tick-${t.timestamp}-${idx}`}
                         className={`hover:bg-slate-800/50 transition-colors ${
                           isUp ? 'bg-emerald-950/10' : 'bg-rose-950/10'
                         }`}
@@ -302,9 +242,12 @@ export const LiveFeedStream: React.FC = () => {
                         <td className={`py-2 px-3 text-right font-bold text-[11px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {isUp ? '▲ +' : '▼ '}{t.changePct}%
                         </td>
-                        <td className="py-2 px-3 text-right text-slate-300 font-medium">{t.quantity}</td>
-                        <td className="py-2 px-3 text-right text-slate-500 text-[10px]">
-                          ₹{t.bidPrice} / ₹{t.askPrice}
+                        <td className="py-2 px-3 text-right text-slate-400 text-[10px] uppercase font-sans">
+                          {t.source === 'POLL' ? (
+                            <span className="text-emerald-400 font-semibold">quote poll</span>
+                          ) : (
+                            <span className="text-amber-400 font-semibold">simulated</span>
+                          )}
                         </td>
                       </tr>
                     );

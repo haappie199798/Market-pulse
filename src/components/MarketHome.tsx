@@ -53,13 +53,13 @@ export const MarketHome: React.FC<MarketHomeProps> = ({
           </div>
           <div>
             <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-              <span>Real-Time SSE Live Tick Stream Available</span>
+              <span>Polled Quote Stream</span>
               <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                ~1.0s Ticks
+                ~5s poll
               </span>
             </h3>
             <p className="text-[11px] text-slate-300">
-              Watch real-time price changes, level-2 order depth, and trade execution stream for Indian indices.
+              Price updates polled from the upstream quote source every ~5 seconds. Not an exchange tick feed, and no order-book depth is available.
             </p>
           </div>
         </div>
@@ -69,7 +69,7 @@ export const MarketHome: React.FC<MarketHomeProps> = ({
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-emerald-500/20 shrink-0"
         >
           <Zap className="w-4 h-4 fill-current" />
-          <span>Launch Live Feed Stream</span>
+          <span>Open quote stream</span>
         </button>
       </div>
 

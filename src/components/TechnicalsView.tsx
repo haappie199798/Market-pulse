@@ -27,6 +27,9 @@ export const TechnicalsView: React.FC<TechnicalsViewProps> = ({
 
   const { summary, rsi14, macd, ema, sma, supertrend, bollinger, pivots, cpr } = technicals;
 
+  const fmt = (v: number | null, dp = 2): string =>
+    v == null ? '—' : v.toFixed(dp);
+
   const biasColor =
     summary.bias.includes('BULLISH') ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' :
     summary.bias.includes('BEARISH') ? 'text-rose-400 bg-rose-500/10 border-rose-500/30' :
@@ -39,8 +42,35 @@ export const TechnicalsView: React.FC<TechnicalsViewProps> = ({
     setExpandedSection(expandedSection === id ? null : id);
   };
 
+  const dq = technicals.dataQuality;
+
   return (
     <div className="space-y-6">
+      {dq?.source === 'SIMULATED' ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4">
+          <ShieldAlert className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+          <div className="text-[12px] leading-relaxed">
+            <p className="font-bold text-amber-300">Placeholder values — not computed</p>
+            <p className="text-amber-200/80">
+              The upstream candle fetch failed, so these are static placeholder
+              numbers rather than indicators derived from market data. Do not
+              read anything into them.
+            </p>
+          </div>
+        </div>
+      ) : dq && !dq.warmupComplete ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-slate-700 bg-slate-900 p-4">
+          <ShieldAlert className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+          <div className="text-[12px] leading-relaxed">
+            <p className="font-bold text-slate-200">Limited history</p>
+            <p className="text-slate-400">
+              Computed from {dq.candlesUsed} candles. Longer-period indicators
+              such as EMA-200 need at least 200 and are shown as “—” until
+              enough history is available. Pivots derived from {dq.pivotsFrom}.
+            </p>
+          </div>
+        </div>
+      ) : null}
       
       {/* Timeframe Selector & Non-advisory Disclaimer */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -145,7 +175,12 @@ export const TechnicalsView: React.FC<TechnicalsViewProps> = ({
             <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60">
               <span className="text-slate-400 font-medium">ADX (14) Trend Strength</span>
               <div className="font-mono text-slate-200 font-bold">
-                {technicals.adx14} ({technicals.adx14 > 25 ? 'Strong Trend' : 'Weak Trend'})
+                {fmt(technicals.adx14)}{' '}
+                ({technicals.adx14 == null
+                  ? 'Not available'
+                  : technicals.adx14 > 25
+                    ? 'Strong Trend'
+                    : 'Weak Trend'})
               </div>
             </div>
           </div>
@@ -163,9 +198,25 @@ export const TechnicalsView: React.FC<TechnicalsViewProps> = ({
             <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60">
               <span className="text-slate-400 font-medium">RSI (14)</span>
               <div className="flex items-center gap-2 font-mono">
-                <span className="font-bold text-slate-200">{rsi14}</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rsi14 > 70 ? 'bg-rose-500/20 text-rose-400' : rsi14 < 30 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-300'}`}>
-                  {rsi14 > 70 ? 'Overbought' : rsi14 < 30 ? 'Oversold' : 'Neutral'}
+                <span className="font-bold text-slate-200">{fmt(rsi14, 1)}</span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    rsi14 == null
+                      ? 'bg-slate-800 text-slate-400'
+                      : rsi14 > 70
+                        ? 'bg-rose-500/20 text-rose-400'
+                        : rsi14 < 30
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : 'bg-slate-800 text-slate-300'
+                  }`}
+                >
+                  {rsi14 == null
+                    ? 'Not available'
+                    : rsi14 > 70
+                      ? 'Overbought'
+                      : rsi14 < 30
+                        ? 'Oversold'
+                        : 'Neutral'}
                 </span>
               </div>
             </div>
